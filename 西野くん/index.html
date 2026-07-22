@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI翻訳チャット＆通話 高機能プロトタイプ</title>
+  <!-- Tailwind CSS (CDN版) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    /* スクロールバーのカスタマイズ */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 4px;
+    }
+    /* 過去ログフェード用のスタイル（グラデーション/透過） */
+    .historical-message {
+      opacity: 0.45;
+      filter: blur(0.2px);
+      transition: all 0.5s ease;
+    }
+    .historical-message:hover {
+      opacity: 1.0;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex justify-center items-center min-h-screen font-sans antialiased dark">
+
+  <!-- 全体コンテナ (ダークモード標準・適切な余白設計) -->
+  <div id="app-container" class="w-full max-w-xl h-[95vh] bg-slate-900 flex flex-col rounded-3xl shadow-2xl overflow-hidden relative border border-slate-800 m-4">
+    
+    <!-- 1. ヘッダー領域 -->
+    <header class="bg-slate-850 px-6 py-4 flex justify-between items-center border-b border-slate-800 z-10 shrink-0 shadow-lg">
+      <div class="flex items-center gap-3">
+        <!-- アーカイブ切り替えボタン -->
+        <button id="archive-toggle-btn" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl active:scale-95 transition-all cursor-pointer border border-slate-700 text-xs font-bold flex items-center gap-1 shrink-0" title="アーカイブ一覧を表示">
+          📂 <span id="archive-btn-text">一覧</span>
+        </button>
+        <div class="flex items-center gap-3" id="header-user-profile">
+          <div class="relative">
+            <div class="w-10 h-10 bg-sky-950 text-sky-400 rounded-full flex items-center justify-center font-bold border-2 border-sky-500/35">A</div>
+            <span class="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full"></span>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-slate-100 text-sm">Alex</span>
+            </div>
+            <p class="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">● オンライン</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <button id="theme-toggle" class="p-2.5 text-slate-400 hover:text-slate-200 rounded-xl bg-slate-800 border border-slate-700 cursor-pointer" title="テーマ切り替え">🌙</button>
+        <button id="call-btn" class="p-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl active:scale-95 transition-all cursor-pointer shadow-md text-xs font-bold flex items-center gap-1" title="通話を開始">📞 通話</button>
+      </div>
+    </header>
+
+    <!-- 2. 中央メイン表示エリア -->
+    <!-- 通常のチャット画面 -->
+    <main id="chat-area" class="flex-1 overflow-y-auto p-6 space-y-6 relative bg-gradient-to-b from-slate-900 to-slate-950">
+      <div id="typing-indicator" class="hidden absolute top-4 left-6 right-6 bg-slate-800/80 border border-slate-700/50 backdrop-blur-md text-slate-300 text-xs py-2 px-4 rounded-xl items-center gap-2 shadow-md z-20">
+        <span class="flex space-x-1">
+          <span class="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce" style="animation-delay: 0ms"></span>
+          <span class="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce" style="animation-delay: 150ms"></span>
+          <span class="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce" style="animation-delay: 300ms"></span>
+        </span>
+        <span>Alex が翻訳テキストを入力中...</span>
+      </div>
+
+      <div class="relative flex py-2 items-center">
+        <div class="flex-grow border-t border-slate-800/60"></div>
+        <span class="flex-shrink mx-4 text-[11px] text-slate-500 font-mono tracking-wider">これより過去のメッセージ</span>
+        <div class="flex-grow border-t border-slate-800/60"></div>
+      </div>
+
+      <div class="flex items-end gap-3 max-w-[85%] historical-message">
+        <div class="w-8 h-8 bg-sky-950 text-sky-400 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border border-sky-900">A</div>
+        <div class="space-y-1">
+          <div class="bg-slate-800 border border-slate-700 text-slate-300 p-3.5 rounded-2xl rounded-bl-none text-sm shadow-sm break-all whitespace-pre-wrap">Hello! How are you doing today? 😊</div>
+          <p class="text-[10px] text-slate-500 flex items-center gap-1 font-mono">✓ 既読 · 10:14</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- 【新設】アーカイブ画面 (初期状態はhiddenで非表示 / 画像のUI構成を忠実に再現) -->
+    <main id="archive-area" class="flex-1 overflow-y-auto p-6 relative bg-slate-950 hidden">
+      <div class="max-w-md mx-auto space-y-5 pb-20">
+        <!-- タイトル表示 -->
+        <div class="flex justify-between items-center">
+          <h2 class="text-xl font-bold text-slate-100 tracking-wide">アーカイブされたトピック</h2>
+          <span class="text-slate-400 text-lg cursor-pointer hover:text-white">🔍</span>
+        </div>
+
+        <!-- 検索入力欄 -->
+        <div class="relative">
+          <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm">🔍</span>
+          <input type="text" placeholder="過去の会話を検索..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-700">
+        </div>
+
+        <!-- アーカイブリスト (画像に基づくカードデザイン) -->
+        <div class="space-y-3">
+          <!-- トピック1 -->
+          <div class="bg-slate-900 border border-slate-800/80 rounded-2xl p-4 flex justify-between items-start hover:border-slate-700 transition-all cursor-pointer shadow-sm relative group">
+            <div class="flex gap-3">
+              <div class="w-10 h-10 bg-slate-800 text-slate-400 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border border-slate-700">👤</div>
+              <div>
+                <h4 class="font-bold text-slate-200 text-sm flex items-center gap-1 group-hover:text-sky-400 transition-colors">
+                  システム更新の件 (2023.10)
+                </h4>
+                <p class="text-xs text-slate-500 mt-1 font-mono">2023.10.15</p>
+              </div>
+            </div>
+            <div class="flex flex-col items-end justify-between h-full text-slate-500 gap-4">
+              <span class="text-xs text-emerald-500">✔</span>
+              <span class="text-xs">📎</span>
+            </div>
+          </div>
+
+          <!-- トピック2 -->
+          <div class="bg-slate-900 border border-slate-800/80 rounded-2xl p-4 flex justify-between items-start hover:border-slate-700 transition-all cursor-pointer shadow-sm group">
+            <div class="flex gap-3">
+              <div class="w-10 h-10 bg-slate-800 text-slate-400 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border border-slate-700">👤</div>
+              <div>
+                <h4 class="font-bold text-slate-200 text-sm group-hover:text-sky-400 transition-colors">
+                  新規プロジェクトキックオフ (2024.01)
+                </h4>
+                <p class="text-xs text-slate-500 mt-1 font-mono">2024.01.20</p>
+              </div>
+            </div>
+            <span class="text-xs text-emerald-500">✔</span>
+          </div>
+
+          <!-- トピック3 -->
+          <div class="bg-slate-900 border border-slate-800/80 rounded-2xl p-4 flex justify-between items-start hover:border-slate-700 transition-all cursor-pointer shadow-sm group">
+            <div class="flex gap-3">
+              <div class="w-10 h-10 bg-slate-800 text-slate-400 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border border-slate-700">👤</div>
+              <div>
+                <h4 class="font-bold text-slate-200 text-sm group-hover:text-sky-400 transition-colors">
+                  Q1 営業報告 (2024.03)
+                </h4>
+                <p class="text-xs text-slate-500 mt-1 font-mono">2024.03.30</p>
+              </div>
+            </div>
+            <span class="text-xs text-emerald-500">✔</span>
+          </div>
+
+          <!-- トピック4 (複数アバターのモック表現) -->
+          <div class="bg-slate-900 border border-slate-800/80 rounded-2xl p-4 flex justify-between items-start hover:border-slate-700 transition-all cursor-pointer shadow-sm group">
+            <div class="flex gap-3">
+              <div class="relative w-10 h-10 shrink-0">
+                <div class="w-7 h-7 bg-slate-800 text-slate-400 rounded-full flex items-center justify-center font-bold text-[10px] border border-slate-700 absolute top-0 left-0">👤</div>
+                <div class="w-7 h-7 bg-sky-950 text-sky-400 rounded-full flex items-center justify-center font-bold text-[10px] border border-slate-700 absolute bottom-0 right-0 z-10">A</div>
+              </div>
+              <div>
+                <h4 class="font-bold text-slate-200 text-sm group-hover:text-sky-400 transition-colors">
+                  過去のプロジェクト進捗報告 (2024.05)
+                </h4>
+                <p class="text-xs text-slate-500 mt-1 font-mono">2024.05.02</p>
+              </div>
+            </div>
+            <span class="text-xs text-emerald-500">✔</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 画像最下部の「新しい検索 / フィルタ」フローティングボタンを再現 -->
+      <div class="absolute bottom-6 left-0 right-0 flex justify-center pointer-events-none">
+        <button class="pointer-events-auto bg-slate-100 hover:bg-white text-slate-900 font-bold px-5 py-2.5 rounded-full shadow-xl text-xs flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-slate-200">
+          <span>🎛️</span> 新しい検索 / フィルタ
+        </button>
+      </div>
+    </main>
+
+    <!-- 最下部に戻るボタン (スクロール時に自動出現) -->
+    <button id="scroll-bottom-btn" class="absolute bottom-32 right-6 p-3 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded-full shadow-xl opacity-0 translate-y-4 pointer-events-none transition-all duration-300 z-30 cursor-pointer flex items-center justify-center" title="最新の会話へ移動">⬇️</button>
+
+    <!-- 3. 通話中オーバーレイ層 -->
+    <div id="call-overlay" class="absolute inset-0 bg-slate-950/98 z-50 flex flex-col items-center justify-between p-8 text-white hidden opacity-0 transition-opacity duration-300">
+      <div class="text-center mt-12 space-y-3">
+        <div class="w-24 h-24 bg-slate-900 rounded-full mx-auto flex items-center justify-center text-3xl font-bold border-2 border-sky-500 shadow-xl shadow-sky-500/20 animate-pulse">A</div>
+        <h3 class="text-xl font-bold tracking-wide">Alex と通話中</h3>
+        <p id="call-timer" class="font-mono text-sky-400 bg-slate-900 px-4 py-1 rounded-full text-sm inline-block border border-slate-800">00:00</p>
+      </div>
+      <button id="hangup-btn" class="mb-8 p-4 bg-rose-600 text-white rounded-full hover:bg-rose-500 active:scale-95 transition-all shadow-lg cursor-pointer">❌ 切断</button>
+    </div>
+
+    <!-- 4. 下部入力フッター領域 -->
+    <footer id="chat-footer" class="bg-slate-850 p-4 border-t border-slate-800 z-10 shrink-0 shadow-2xl transition-all duration-300">
+      <div id="attachment-preview" class="hidden pb-2 flex items-center justify-between text-xs text-slate-400 bg-slate-900/50 p-2 rounded-lg mb-2 border border-slate-800">
+        <span class="flex items-center gap-1.5">📎 <span id="attachment-name">filename.jpg</span></span>
+        <button id="cancel-attachment" class="text-rose-400 hover:text-rose-300 font-bold px-1">✕</button>
+      </div>
+
+      <div class="flex items-end gap-3">
+        <label class="p-3.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-xl transition-all cursor-pointer border border-slate-700 flex items-center justify-center shrink-0 h-14 w-14" title="ファイルを添付">
+          <input type="file" id="file-input" class="sr-only">
+          <span class="text-xl">📎</span>
+        </label>
+
+        <div class="flex-1 relative">
+          <textarea id="chat-input" rows="1" placeholder="メッセージを入力... (Shift+Enterで改行)" maxlength="1000" class="w-full bg-slate-900 text-slate-100 placeholder-slate-500 text-sm rounded-xl pl-3 pr-10 py-4 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-slate-950 transition-all resize-none min-h-[56px] max-h-[120px] leading-relaxed"></textarea>
+          <label class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center cursor-pointer select-none" title="AI自動翻訳">
+            <input type="checkbox" id="translate-switch" class="sr-only peer" checked>
+            <div class="w-7 h-4 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-slate-300 after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:bg-white"></div>
+          </label>
+        </div>
+        
+        <button id="send-btn" class="h-14 w-14 bg-sky-600 hover:bg-sky-500 text-white rounded-xl active:scale-95 transition-all shadow-md flex flex-col items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+          <span class="text-lg">➔</span>
+          <span id="send-btn-status" class="text-[9px] text-sky-200 font-mono tracking-tighter">READY</span>
+        </button>
+      </div>
+    </footer>
+
+  </div>
+
+  <script>
+    // DOM要素取得
+    const callBtn = document.getElementById('call-btn');
+    const hangupBtn = document.getElementById('hangup-btn');
+    const callOverlay = document.getElementById('call-overlay');
+    const callTimer = document.getElementById('call-timer');
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+    const sendBtnStatus = document.getElementById('send-btn-status');
+    const chatArea = document.getElementById('chat-area');
+    const translateSwitch = document.getElementById('translate-switch');
+    const typingIndicator = document.getElementById('typing-indicator');
+    const scrollBottomBtn = document.getElementById('scroll-bottom-btn');
+    const fileInput = document.getElementById('file-input');
+    const attachmentPreview = document.getElementById('attachment-preview');
+    const attachmentName = document.getElementById('attachment-name');
+    const cancelAttachment = document.getElementById('cancel-attachment');
+    
+    // アーカイブ関連のDOM
+    const archiveToggleBtn = document.getElementById('archive-toggle-btn');
+    const archiveBtnText = document.getElementById('archive-btn-text');
+    const archiveArea = document.getElementById('archive-area');
+    const chatFooter = document.getElementById('chat-footer');
+    const headerUserProfile = document.getElementById('header-user-profile');
+
+    let timerInterval = null;
+    let secondsElapsed = 0;
+    let isArchiveMode = false;
+
+    // アーカイブ画面とチャット画面のトグル制御
+    archiveToggleBtn.addEventListener('click', () => {
+      isArchiveMode = !isArchiveMode;
+      if (isArchiveMode) {
+        // アーカイブ画面を表示
+        chatArea.classList.add('hidden');
+        chatFooter.classList.add('hidden'); // アーカイブ閲覧中は入力欄を非表示にして閲覧に特化
+        archiveArea.classList.remove('hidden');
+        archiveBtnText.textContent = 'チャット';
+        archiveToggleBtn.classList.remove('bg-slate-800');
+        archiveToggleBtn.classList.add('bg-sky-900', 'text-sky-200');
+        headerUserProfile.style.opacity = '0.5'; // 過去ログ閲覧中であることを示す視覚表現
+      } else {
+        // 通常のチャット画面に戻る
+        archiveArea.classList.add('hidden');
+        chatArea.classList.remove('hidden');
+        chatFooter.classList.remove('hidden');
+        archiveBtnText.textContent = '一覧';
+        archiveToggleBtn.classList.remove('bg-sky-900', 'text-sky-200');
+        archiveToggleBtn.classList.add('bg-slate-800');
+        headerUserProfile.style.opacity = '1';
+        chatArea.scrollTo({ top: chatArea.scrollHeight });
+      }
+    });
+
+    // テキストエリアの高さ自動調整
+    chatInput.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = (this.scrollHeight) + 'px';
+    });
+
+    // キーボード操作設定
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    sendBtn.addEventListener('click', sendMessage);
+    callBtn.addEventListener('click', () => toggleCallOverlay(true));
+    hangupBtn.addEventListener('click', () => toggleCallOverlay(false));
+
+    // スクロール検知：一番下に戻るボタン
+    chatArea.addEventListener('scroll', () => {
+      const diff = chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight;
+      if (diff > 150) {
+        scrollBottomBtn.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
+      } else {
+        scrollBottomBtn.classList.add('opacity-0', 'pointer-events-none', 'translate-y-4');
+      }
+    });
+    scrollBottomBtn.addEventListener('click', () => {
+      chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: 'smooth' });
+    });
+
+    // 添付ファイルロジック
+    fileInput.addEventListener('change', (e) => {
+      if(e.target.files.length > 0) {
+        attachmentName.textContent = e.target.files[0].name;
+        attachmentPreview.classList.remove('hidden');
+      }
+    });
+    cancelAttachment.addEventListener('click', () => {
+      fileInput.value = '';
+      attachmentPreview.classList.add('hidden');
+    });
+
+    // メッセージ送信処理
+    function sendMessage() {
+      const cleanText = chatInput.value.trim();
+      const hasAttachment = fileInput.value !== '';
+
+      if (cleanText === '' && !hasAttachment) return;
+
+      sendBtn.disabled = true;
+      sendBtnStatus.textContent = "SENDING";
+
+      const existingBubbles = chatArea.querySelectorAll('.flex.items-end');
+      existingBubbles.forEach(el => el.classList.add('historical-message'));
+
+      let displayContent = cleanText;
+      if(hasAttachment) displayContent = `📎 [ファイル添付: ${attachmentName.textContent}]\n` + displayContent;
+      
+      createMessageBubble(displayContent, 'self', 'ja');
+
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+      fileInput.value = '';
+      attachmentPreview.classList.add('hidden');
+
+      setTimeout(() => {
+        sendBtnStatus.textContent = "DONE";
+        setTimeout(() => {
+          sendBtn.disabled = false;
+          sendBtnStatus.textContent = "READY";
+        }, 300);
+      }, 200);
+
+      if (translateSwitch.checked) {
+        setTimeout(() => {
+          typingIndicator.classList.remove('hidden');
+          typingIndicator.classList.add('flex');
+          
+          setTimeout(() => {
+            typingIndicator.classList.remove('flex');
+            typingIndicator.classList.add('hidden');
+            createAITranslatedBubble("Alex", "I understand. Let's focus on the **critical milestones** for the **deadline on Friday**.", 'en');
+          }, 1500);
+        }, 600);
+      }
+    }
+
+    function createMessageBubble(text, sender, lang) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex items-end gap-3 max-w-[85%] transition-all duration-300 transform translate-y-2 opacity-0';
+      
+      if (sender === 'self') wrapper.classList.add('ml-auto', 'justify-end');
+
+      if (sender === 'peer') {
+        const avatar = document.createElement('div');
+        avatar.className = 'w-8 h-8 bg-sky-950 text-sky-400 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border border-sky-800';
+        avatar.textContent = 'A';
+        wrapper.appendChild(avatar);
+      }
+
+      const containerDiv = document.createElement('div');
+      containerDiv.className = 'space-y-1';
+
+      const bubble = document.createElement('div');
+      bubble.textContent = text;
+
+      if (sender === 'self') {
+        bubble.className = 'bg-sky-600 text-white p-3.5 rounded-2xl rounded-br-none text-sm shadow-md break-all whitespace-pre-wrap font-medium';
+      } else {
+        if (lang === 'en') {
+          bubble.className = 'bg-slate-800 border border-slate-700 text-slate-200 p-3.5 rounded-2xl rounded-bl-none text-sm shadow-md break-all whitespace-pre-wrap';
+        } else {
+          bubble.className = 'bg-emerald-950 border border-emerald-800 text-emerald-100 p-3.5 rounded-2xl rounded-bl-none text-sm shadow-md break-all whitespace-pre-wrap';
+        }
+      }
+
+      containerDiv.appendChild(bubble);
+
+      const statusMeta = document.createElement('p');
+      statusMeta.className = 'text-[10px] text-slate-500 font-mono mt-1';
+      statusMeta.textContent = sender === 'self' ? '⌲ 送信済 · 只今' : '✓ 受信 · 只今';
+      containerDiv.appendChild(statusMeta);
+
+      wrapper.appendChild(containerDiv);
+      chatArea.appendChild(wrapper);
+
+      setTimeout(() => wrapper.classList.remove('opacity-0', 'translate-y-2'), 50);
+      chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: 'smooth' });
+    }
+
+    function createAITranslatedBubble(name, text, lang) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex items-end gap-3 max-w-[85%] transition-all duration-300 transform translate-y-2 opacity-0';
+      
+      const avatar = document.createElement('div');
+      avatar.className = 'w-8 h-8 bg-sky-950 text-sky-400 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border border-sky-800';
+      avatar.textContent = 'A';
+      wrapper.appendChild(avatar);
+
+      const containerDiv = document.createElement('div');
+      containerDiv.className = 'space-y-1';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bg-slate-800 border border-slate-700 text-slate-200 p-3.5 rounded-2xl rounded-bl-none text-sm shadow-md break-all whitespace-pre-wrap';
+
+      const parts = text.split('**');
+      parts.forEach((part, index) => {
+        if (index % 2 === 1) {
+          const strong = document.createElement('strong');
+          strong.className = 'text-amber-400 font-extrabold underline decoration-amber-500/50 decoration-2 px-0.5';
+          strong.textContent = part;
+          bubble.appendChild(strong);
+        } else {
+          const textNode = document.createTextNode(part);
+          bubble.appendChild(textNode);
+        }
+      });
+
+      containerDiv.appendChild(bubble);
+
+      const statusMeta = document.createElement('p');
+      statusMeta.className = 'text-[10px] text-slate-500 font-mono mt-1';
+      statusMeta.textContent = '✓ 自動翻訳済 · 只今';
+      containerDiv.appendChild(statusMeta);
+
+      wrapper.appendChild(containerDiv);
+      chatArea.appendChild(wrapper);
+
+      setTimeout(() => wrapper.classList.remove('opacity-0', 'translate-y-2'), 50);
+      chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: 'smooth' });
+    }
+
+    function toggleCallOverlay(show) {
+      if (show) {
+        callOverlay.classList.remove('hidden');
+        setTimeout(() => callOverlay.classList.remove('opacity-0'), 10);
+        secondsElapsed = 0;
+        timerInterval = setInterval(() => {
+          secondsElapsed++;
+          const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+          const secs = String(secondsElapsed % 60).padStart(2, '0');
+          callTimer.textContent = `${mins}:${secs}`;
+        }, 1000);
+      } else {
+        callOverlay.classList.add('opacity-0');
+        clearInterval(timerInterval);
+        setTimeout(() => callOverlay.classList.add('hidden'), 300);
+      }
+    }
+  </script>
+</body>
+</html>
