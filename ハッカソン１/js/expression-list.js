@@ -2,16 +2,15 @@
 // 担当範囲：表現の「型」タブ切り替え・固定グルーピングによる一覧描画（詳細設計書 3.7節 / 4章 参照）
 
 // 表現の「型」一覧の元データ（モック）。1件につき scene/formality/emotion の3軸属性を持つ。
-// ja: 日本語訳。どの定型表現を選べばいいか一目で分かるよう、英文の下に補足キャプションとして表示する。
 const expressionData = [
-  { text: 'Could you tell me more about that?', ja: 'それについてもっと教えていただけますか？', scene: 'business', formality: 'high', emotion: 'neutral' },
-  { text: 'I really appreciate your help with this.', ja: '手伝っていただき本当に感謝しています。', scene: 'business', formality: 'high', emotion: 'positive' },
-  { text: 'Sounds good, let’s do that!', ja: 'いいですね、それにしましょう！', scene: 'daily', formality: 'low', emotion: 'positive' },
-  { text: 'Hey, what’s up?', ja: 'やあ、調子どう？', scene: 'daily', formality: 'low', emotion: 'neutral' },
-  { text: 'I’m so sorry to hear that.', ja: 'それは本当にお気の毒です。', scene: 'daily', formality: 'neutral', emotion: 'negative' },
-  { text: 'Excuse me, where is the nearest station?', ja: 'すみません、一番近い駅はどこですか？', scene: 'travel', formality: 'neutral', emotion: 'neutral' },
-  { text: 'This is amazing, I love it here!', ja: 'これはすごい、ここが大好きです！', scene: 'travel', formality: 'low', emotion: 'positive' },
-  { text: 'I’m afraid we have to reschedule the meeting.', ja: '申し訳ありませんが、会議の予定を変更する必要があります。', scene: 'business', formality: 'high', emotion: 'negative' },
+  { text: 'Could you tell me more about that?', scene: 'business', formality: 'high', emotion: 'neutral' },
+  { text: 'I really appreciate your help with this.', scene: 'business', formality: 'high', emotion: 'positive' },
+  { text: 'Sounds good, let’s do that!', scene: 'daily', formality: 'low', emotion: 'positive' },
+  { text: 'Hey, what’s up?', scene: 'daily', formality: 'low', emotion: 'neutral' },
+  { text: 'I’m so sorry to hear that.', scene: 'daily', formality: 'neutral', emotion: 'negative' },
+  { text: 'Excuse me, where is the nearest station?', scene: 'travel', formality: 'neutral', emotion: 'neutral' },
+  { text: 'This is amazing, I love it here!', scene: 'travel', formality: 'low', emotion: 'positive' },
+  { text: 'I’m afraid we have to reschedule the meeting.', scene: 'business', formality: 'high', emotion: 'negative' },
 ];
 
 // 軸ごとの固定グルーピング定義（見出し＋絞り込み値）。動的な値自動検出は行わない。
@@ -48,26 +47,37 @@ export function renderExpressionList(axis) {
   const fragment = document.createDocumentFragment();
 
   groups.forEach((group) => {
-    const heading = document.createElement('h3');
-    heading.className = 'text-xs font-bold text-slate-400 tracking-wide';
-    heading.textContent = group.label;
-    fragment.appendChild(heading);
+    const groupEl = document.createElement('div');
+    groupEl.className = 'expression-group border border-slate-700/60 rounded-lg overflow-hidden mb-3';
+
+    // グループ見出し自体がプルダウンの起点。押すと配下の表現が全部まとめて表示される
+    const headingBtn = document.createElement('button');
+    headingBtn.type = 'button';
+    headingBtn.className = 'expression-group-toggle w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-xs font-bold text-slate-300 tracking-wide cursor-pointer bg-slate-800/60';
+    headingBtn.setAttribute('aria-expanded', 'false');
+
+    const label = document.createElement('span');
+    label.textContent = group.label;
+    headingBtn.appendChild(label);
+
+    const caret = document.createElement('span');
+    caret.className = 'expression-caret text-slate-500';
+    caret.textContent = '▶';
+    headingBtn.appendChild(caret);
 
     const list = document.createElement('ul');
-    list.className = 'space-y-1.5 mb-3';
+    list.className = 'expression-group-body hidden divide-y divide-slate-700/60';
 
     const items = expressionData.filter((item) => item[axis] === group.value);
     items.forEach((item) => {
       const li = document.createElement('li');
-      li.className = 'text-sm text-slate-200 bg-slate-800/60 border border-slate-700/60 rounded-lg px-3 py-2';
+      li.className = 'px-3 py-2';
 
-      // 英文本体（メイン表示）
       const enLine = document.createElement('p');
-      enLine.className = 'expression-en';
+      enLine.className = 'expression-en font-bold text-slate-100 text-sm';
       enLine.textContent = item.text;
       li.appendChild(enLine);
 
-      // 日本語訳（補足キャプション。小さく・薄く表示して、選択の手がかりにする）
       if (item.ja) {
         const jaLine = document.createElement('p');
         jaLine.className = 'expression-ja text-[11px] text-slate-400 italic mt-0.5';
@@ -78,18 +88,48 @@ export function renderExpressionList(axis) {
       list.appendChild(li);
     });
 
-    fragment.appendChild(list);
+    headingBtn.addEventListener('click', () => {
+      const nowHidden = list.classList.toggle('hidden');
+      caret.textContent = nowHidden ? '▶' : '▼';
+      headingBtn.setAttribute('aria-expanded', String(!nowHidden));
+    });
+
+    groupEl.appendChild(headingBtn);
+    groupEl.appendChild(list);
+    fragment.appendChild(groupEl);
   });
 
   container.appendChild(fragment);
 }
 
 const tabButtons = document.querySelectorAll('.tab-btn');
+const tabBar = tabButtons[0]?.parentElement ?? null;
+const expressionPanel = document.getElementById('expression-panel');
+
+let sliderEl = null;
+
+// スライダー方式：アクティブタブの背後を滑る錠剤状インジケーターをタブバーへ動的挿入する
+function ensureSlider() {
+  if (!tabBar || sliderEl) return;
+  tabBar.classList.add('tab-bar');
+  sliderEl = document.createElement('div');
+  sliderEl.className = 'tab-slider';
+  tabBar.insertBefore(sliderEl, tabBar.firstChild);
+}
+
+function moveSliderTo(btn) {
+  if (!sliderEl || !btn) return;
+  sliderEl.style.width = `${btn.offsetWidth}px`;
+  sliderEl.style.transform = `translateX(${btn.offsetLeft}px)`;
+}
+
+ensureSlider();
 
 tabButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
     tabButtons.forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
+    moveSliderTo(btn);
     renderExpressionList(btn.dataset.axis);
   });
 });
@@ -99,3 +139,20 @@ const initialTab = document.querySelector('.tab-btn.active') ?? tabButtons[0];
 if (initialTab) {
   renderExpressionList(initialTab.dataset.axis);
 }
+
+// #expression-panel は初期状態で hidden（display:none）のため、非表示中はタブの
+// offsetWidth/offsetLeftが0になり正しい位置を計算できない。表示された瞬間に再計算する。
+if (expressionPanel) {
+  const panelObserver = new MutationObserver(() => {
+    if (!expressionPanel.classList.contains('hidden')) {
+      moveSliderTo(document.querySelector('.tab-btn.active') ?? tabButtons[0]);
+    }
+  });
+  panelObserver.observe(expressionPanel, { attributes: true, attributeFilter: ['class'] });
+}
+
+window.addEventListener('resize', () => {
+  if (expressionPanel && !expressionPanel.classList.contains('hidden')) {
+    moveSliderTo(document.querySelector('.tab-btn.active') ?? tabButtons[0]);
+  }
+});
