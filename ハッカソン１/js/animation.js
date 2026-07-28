@@ -112,10 +112,10 @@ export function playFlyAnimation(sourceElement) {
     plane.classList.add('fly-active');
   });
 
-  // アニメーション終了後にDOMから削除（500ms想定）
+  // アニメーション終了後にDOMから削除（css/style.cssの.fly-paper-planeのtransition時間と一致させる）
   setTimeout(() => {
     if (plane.parentNode) {
       plane.parentNode.removeChild(plane);
     }
-  }, 500);
+  }, 1200);
 }
