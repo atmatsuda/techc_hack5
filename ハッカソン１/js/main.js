@@ -59,6 +59,15 @@ expressionToggleBtn?.addEventListener('click', () => {
   expressionPanel?.classList.toggle('hidden');
 });
 
+// パネルの外側（余白部分）をクリック/タップしたら閉じる。
+// 「開いたタブをもう一度クリックしないと戻れない」という使いにくさの解消のため、
+// パネル自身とトグルボタン以外へのクリックを「外側」とみなして閉じる。
+document.addEventListener('click', (e) => {
+  if (!expressionPanel || expressionPanel.classList.contains('hidden')) return;
+  if (expressionPanel.contains(e.target) || expressionToggleBtn?.contains(e.target)) return;
+  expressionPanel.classList.add('hidden');
+});
+
 callBtn?.addEventListener('click', () => {
   if (AppState.getState().ui.isTransitioning) return;
   startCall();

@@ -2,15 +2,17 @@
 // 担当範囲：表現の「型」タブ切り替え・固定グルーピングによる一覧描画（詳細設計書 3.7節 / 4章 参照）
 
 // 表現の「型」一覧の元データ（モック）。1件につき scene/formality/emotion の3軸属性を持つ。
+// ja: 日本語訳。コピペ用テンプレだけでは意味が分かりにくいという指摘を受け、
+// 英文の下に小さな補足キャプションとして表示するために追加。
 const expressionData = [
-  { text: 'Could you tell me more about that?', scene: 'business', formality: 'high', emotion: 'neutral' },
-  { text: 'I really appreciate your help with this.', scene: 'business', formality: 'high', emotion: 'positive' },
-  { text: 'Sounds good, let’s do that!', scene: 'daily', formality: 'low', emotion: 'positive' },
-  { text: 'Hey, what’s up?', scene: 'daily', formality: 'low', emotion: 'neutral' },
-  { text: 'I’m so sorry to hear that.', scene: 'daily', formality: 'neutral', emotion: 'negative' },
-  { text: 'Excuse me, where is the nearest station?', scene: 'travel', formality: 'neutral', emotion: 'neutral' },
-  { text: 'This is amazing, I love it here!', scene: 'travel', formality: 'low', emotion: 'positive' },
-  { text: 'I’m afraid we have to reschedule the meeting.', scene: 'business', formality: 'high', emotion: 'negative' },
+  { text: 'Could you tell me more about that?', ja: 'それについてもっと教えていただけますか？', scene: 'business', formality: 'high', emotion: 'neutral' },
+  { text: 'I really appreciate your help with this.', ja: '手伝っていただき本当に感謝しています。', scene: 'business', formality: 'high', emotion: 'positive' },
+  { text: 'Sounds good, let’s do that!', ja: 'いいですね、それにしましょう！', scene: 'daily', formality: 'low', emotion: 'positive' },
+  { text: 'Hey, what’s up?', ja: 'やあ、調子どう？', scene: 'daily', formality: 'low', emotion: 'neutral' },
+  { text: 'I’m so sorry to hear that.', ja: 'それは本当にお気の毒です。', scene: 'daily', formality: 'neutral', emotion: 'negative' },
+  { text: 'Excuse me, where is the nearest station?', ja: 'すみません、一番近い駅はどこですか？', scene: 'travel', formality: 'neutral', emotion: 'neutral' },
+  { text: 'This is amazing, I love it here!', ja: 'これはすごい、ここが大好きです！', scene: 'travel', formality: 'low', emotion: 'positive' },
+  { text: 'I’m afraid we have to reschedule the meeting.', ja: '申し訳ありませんが、会議の予定を変更する必要があります。', scene: 'business', formality: 'high', emotion: 'negative' },
 ];
 
 // 軸ごとの固定グルーピング定義（見出し＋絞り込み値）。動的な値自動検出は行わない。
