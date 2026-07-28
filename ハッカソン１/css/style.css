@@ -149,3 +149,26 @@
 #input-lock-overlay:not(.hidden) {
   cursor: wait;
 }
+
+/* ==========================================
+   8. 翻訳中の地球儀アイコン（自転しているような3D回転）
+   ========================================== */
+.translation-globe-wrap {
+  display: inline-block;
+  perspective: 240px;
+}
+
+.translation-globe {
+  display: inline-block;
+  animation: globe-spin-3d 1.6s linear infinite;
+  transform-style: preserve-3d;
+}
+
+@keyframes globe-spin-3d {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
