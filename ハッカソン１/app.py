@@ -19,6 +19,7 @@ AI翻訳チャット＋通話アプリ - バックエンドAPI (Flask)
 """
 
 import os
+import socket
 import uuid
 
 from dotenv import load_dotenv
@@ -28,11 +29,34 @@ from flask_cors import CORS
 # .env があれば読み込む（将来的な OPENAI_API_KEY 等の管理用。現時点では未使用）
 load_dotenv()
 
-app = Flask(__name__)
+# index.html / css / js を同一Flaskアプリから静的配信する。
+# これにより各自のスマホは常に「今開いているページと同じオリジン」にfetchするだけで済み、
+# 127.0.0.1決め打ちのようなLAN内で機能しないURLを書かずに済む。
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, static_folder=BASE_DIR, static_url_path="")
 
-# フロントエンド（file://や別ポートのlive-server等、別オリジン）からの
-# fetch('http://127.0.0.1:5000/api/chat/send') を許可する。
+# 複数端末（同一Wi-Fi内の各自のスマホ）から異なるオリジンでアクセスされるため、
+# 引き続きCORSは許可しておく。
 CORS(app)
+
+
+def get_lan_ip():
+    """
+    同一Wi-Fi内の他端末（参加者のスマホ等）からアクセス可能な、
+    このPCのLAN内IPアドレスを取得する。
+
+    実際にはどこにも接続せず、UDPソケットの宛先解決の副作用として
+    OSがルーティングに使うローカル側IPを取得するテクニック。
+    ネットワーク到達不可な環境（オフライン等）では127.0.0.1にフォールバックする。
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
 
 # JS側 validation.js の isValidMessage(text) と同一基準。
 # 「多重防御」の原則（詳細設計書 原則3）に基づき、バックエンド側でも同じ上限チェックを行う。
@@ -93,6 +117,41 @@ def build_mock_reply(text):
     }
 
 
+@app.route("/")
+def index():
+    """トップページ（index.html）を配信する。"""
+    return app.send_static_file("index.html")
+
+
+@app.route("/api/host-info", methods=["GET"])
+def host_info():
+    """
+    QR表示ページ（qr.html）専用の補助API。
+
+    通常時: このPCのLAN内IPとポートから、同一Wi-Fi内のスマホがアクセスすべきURLを組み立てて返す。
+    会場にWi-Fiが無い/モバイル回線のみの場合: 環境変数 PUBLIC_URL に
+    cloudflared 等のトンネルが発行した公開URL（例: https://xxxx.trycloudflare.com）を
+    設定しておくと、LAN IPより優先してそちらを返す。これによりQRコードは
+    インターネット経由でどこからでも（Wi-Fi不要・モバイル回線でも）読み取り可能になる。
+    """
+    public_url = os.environ.get("PUBLIC_URL", "").strip()
+    if public_url:
+        url = public_url if public_url.endswith("/") else public_url + "/"
+        return jsonify({
+            "status": "success",
+            "lanUrl": url,
+            "mode": "tunnel",
+        })
+
+    port = int(os.environ.get("PORT", 5000))
+    lan_ip = get_lan_ip()
+    return jsonify({
+        "status": "success",
+        "lanUrl": f"http://{lan_ip}:{port}/",
+        "mode": "lan",
+    })
+
+
 @app.route("/api/chat/send", methods=["POST"])
 def chat_send():
     data = request.get_json(silent=True)
@@ -128,4 +187,18 @@ def handle_method_not_allowed(_error):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="127.0.0.1", port=port, debug=True)
+    public_url = os.environ.get("PUBLIC_URL", "").strip()
+
+    if public_url:
+        print(f"\n[トンネル経由の公開URL（Wi-Fi不要・モバイル回線からもアクセス可）]\n"
+              f"  {public_url}\n"
+              f"  (QRコード表示ページはホストPC自身のブラウザで開いてください: "
+              f"http://127.0.0.1:{port}/qr.html)\n")
+    else:
+        lan_ip = get_lan_ip()
+        print(f"\n[同一Wi-Fi内のスマホからのアクセス用URL]\n  http://{lan_ip}:{port}/\n"
+              f"  (QRコード表示ページ: http://{lan_ip}:{port}/qr.html)\n"
+              f"  ※会場にWi-Fiが無い場合は PUBLIC_URL 環境変数にトンネルURLを設定してください\n")
+
+    # host="0.0.0.0"：ループバックだけでなく同一LAN内の他端末からの接続も受け付ける。
+    app.run(host="0.0.0.0", port=port, debug=True)

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>スマホでアクセス - QRコード</title>
+  <!-- QRコード生成用ライブラリ（CDN） -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #0f172a; /* slate-950 */
+      color: #f1f5f9; /* slate-100 */
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100dvh;
+      gap: 1.75rem;
+      text-align: center;
+      padding: 1rem;
+      box-sizing: border-box;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin: 0;
+      letter-spacing: 0.02em;
+    }
+    p.sub {
+      margin: 0;
+      color: #94a3b8; /* slate-400 */
+      font-size: 0.9rem;
+    }
+    #qrcode {
+      background: #fff;
+      padding: 20px;
+      border-radius: 20px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      min-width: 280px;
+      min-height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #url-text {
+      font-family: ui-monospace, monospace;
+      font-size: 1rem;
+      color: #38bdf8; /* sky-400 */
+      background: #1e293b; /* slate-800 */
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      border: 1px solid #334155;
+    }
+    #status {
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <h1>📱 スマホでスキャンして参加</h1>
+  <p class="sub" id="mode-label">同じWi-Fiに接続したスマホのカメラで読み取ってください</p>
+  <div id="qrcode"></div>
+  <p id="url-text">読み込み中...</p>
+  <p id="status"></p>
+
+  <script>
+    async function init() {
+      const statusEl = document.getElementById('status');
+      const urlEl = document.getElementById('url-text');
+      const modeEl = document.getElementById('mode-label');
+      try {
+        const res = await fetch('/api/host-info');
+        if (!res.ok) throw new Error('host-info request failed');
+        const data = await res.json();
+        const url = data.lanUrl;
+
+        if (data.mode === 'tunnel') {
+          modeEl.textContent = 'モバイル回線でもOK（インターネット経由）。Wi-Fi不要です';
+        } else {
+          modeEl.textContent = '同じWi-Fiに接続したスマホのカメラで読み取ってください';
+        }
+
+        urlEl.textContent = url;
+        new QRCode(document.getElementById('qrcode'), {
+          text: url,
+          width: 280,
+          height: 280,
+          colorDark: '#0f172a',
+          colorLight: '#ffffff',
+        });
+      } catch (err) {
+        urlEl.textContent = 'エラー: サーバーに接続できませんでした';
+        statusEl.textContent = 'app.py が起動しているか確認してください。';
+      }
+    }
+    init();
+  </script>
+</body>
+</html>
