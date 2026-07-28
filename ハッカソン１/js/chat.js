@@ -101,25 +101,62 @@ function showSendError(bubbleEl, text) {
 }
 
 /**
- * 疑似的なサーバー送信処理。実APIが無いため一定確率で失敗させ、
- * 失敗時は「！」マークを表示してクリックでの再送信を可能にする。
+ * バックエンド（Flask, POST /api/chat/send）への実送信処理。
+ * 成功時は結果をそのままDOMに描画せず、'chat:apiReplyReceived' イベントを発火して
+ * translation.js 側（地球儀アイコン→疑似遅延→フレーズハイライト・文法解説トグル）に描画を委譲する。
+ * 失敗時（ネットワークエラー・APIエラー）は自分（ユーザー）のバブルに「！」マークを表示し、
+ * クリックでの再送信を可能にする。
  */
-function attemptDelivery(bubbleEl, text) {
-  const failed = Math.random() < 0.15;
-  if (failed) {
+async function attemptDelivery(bubbleEl, text) {
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/chat/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userId: 'user_001',
+        text: text,
+        sourceLang: 'en',
+        targetLang: 'ja',
+        autoTranslate: true
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.status === 'success') {
+      // 受信バブルの描画・翻訳中アイコン・フレーズハイライト・文法解説トグルは
+      // translation.js の receivePeerMessage に一任する（直接addChatBubbleは呼ばない）。
+      // このアプリは英語学習が目的のため、ハイライト・文法解説の対象は英語（reply.en）とし、
+      // 日本語訳（reply.ja）は補足キャプションとして添える。
+      document.dispatchEvent(new CustomEvent('chat:apiReplyReceived', {
+        detail: {
+          translatedText: data.reply.en,
+          translationJa: data.reply.ja,
+          grammarNote: data.reply.grammarNote,
+          phraseMap: data.reply.phraseMap
+        }
+      }));
+    } else {
+      console.error('API Error:', data.message);
+      showSendError(bubbleEl, text);
+    }
+  } catch (error) {
+    console.error('Network Error:', error);
     showSendError(bubbleEl, text);
   }
 }
 
 /**
  * 送信処理を統括する。楽観的UI更新（即時バブル追加）→ 入力欄クリア →
- * 紙飛行機アニメーション → 0.5〜1秒のボタングレーアウトを行う。
+ * 紙飛行機アニメーション → app.pyへの実送信が終わるまでボタングレーアウトを行う。
  */
-export function sendMessage() {
+export async function sendMessage() {
   if (AppState.getState().chat.isSending) return;
 
   const text = chatInput.value;
-  if (!isValidMessage(text)) return; // ②sendMessage内ガード（多層防御）
+  if (!isValidMessage(text)) return;
 
   const bubble = addChatBubble(text.trim(), 'me');
 
@@ -132,14 +169,12 @@ export function sendMessage() {
 
   playFlyAnimation(chatInput);
 
-  const busyDuration = 500 + Math.random() * 500; // 0.5〜1秒
-  setTimeout(() => {
-    AppState.setChatSending(false);
-    setSendButtonStatus('READY');
-    updateSendButtonState();
-  }, busyDuration);
+  // app.py への通信が終わるまで待つ
+  await attemptDelivery(bubble, text.trim());
 
-  attemptDelivery(bubble, text.trim());
+  AppState.setChatSending(false);
+  setSendButtonStatus('READY');
+  updateSendButtonState();
 }
 
 chatInput.addEventListener('input', updateSendButtonState);
