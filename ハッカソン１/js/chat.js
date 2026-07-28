@@ -135,6 +135,7 @@ async function attemptDelivery(bubbleEl, text) {
           translatedText: data.reply.en,
           translationJa: data.reply.ja,
           grammarNote: data.reply.grammarNote,
+          nuance: data.reply.nuance,
           phraseMap: data.reply.phraseMap
         }
       }));
