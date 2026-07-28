@@ -110,3 +110,10 @@ export function receivePeerMessage(payload, signal) {
 
   return bubble;
 }
+
+// chat.js の attemptDelivery() は、API応答受信後に描画処理をこのイベント経由で
+// translation.js に委譲する設計になっている（chat.js内コメント参照）。
+// このリスナーが無いと、サーバー応答は正常でも相手側バブルが一切描画されない。
+document.addEventListener('chat:apiReplyReceived', (e) => {
+  receivePeerMessage(e.detail);
+});
