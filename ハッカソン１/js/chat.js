@@ -4,18 +4,28 @@ import { AppState } from './app-state.js';
 import { isValidMessage } from './validation.js';
 import { playFlyAnimation } from './animation.js';
 
+// DOM要素の取得
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const sendBtnStatus = document.getElementById('send-btn-status');
 const chatArea = document.getElementById('chat-area');
 
+// 要素の存在チェック（デバッグ用）
+if (!chatInput || !sendBtn || !chatArea) {
+  console.error('[ChatJS] 必要なDOM要素が見つかりません。HTMLのIDを確認してください。');
+}
+
 /**
  * 送信ボタンの活性/非活性を、現在の入力値と送信中フラグから再計算する。
- * isValidMessage() を再利用することで多層防御の①（活性制御）を満たす。
  */
 function updateSendButtonState() {
+  if (!chatInput || !sendBtn) return;
+  
   const isSending = AppState.getState().chat.isSending;
-  sendBtn.disabled = isSending || !isValidMessage(chatInput.value);
+  const val = chatInput.value;
+  const isValid = isValidMessage(val);
+  
+  sendBtn.disabled = isSending || !isValid;
 }
 
 function setSendButtonStatus(text) {
@@ -25,7 +35,9 @@ function setSendButtonStatus(text) {
 }
 
 function scrollToLatest() {
-  chatArea.scrollTop = chatArea.scrollHeight;
+  if (chatArea) {
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
 }
 
 function buildWrapperClass(sender) {
@@ -41,11 +53,6 @@ function buildBubbleTextClass(sender) {
 
 /**
  * チャットバブルをDOMに追加する。
- * XSS対策として innerHTML は使用せず、textContent のみでテキストを組み立てる。
- * @param {string} text 表示するメッセージ本文
- * @param {'me'|'peer'} sender 送信者種別
- * @param {{grammarNote?: string}} [options]
- * @returns {HTMLElement|null} 追加したバブルのラッパー要素（不正テキストの場合は null）
  */
 export function addChatBubble(text, sender = 'me', options = {}) {
   if (!isValidMessage(text)) return null;
@@ -102,14 +109,10 @@ function showSendError(bubbleEl, text) {
 
 /**
  * バックエンド（Flask, POST /api/chat/send）への実送信処理。
- * 成功時は結果をそのままDOMに描画せず、'chat:apiReplyReceived' イベントを発火して
- * translation.js 側（地球儀アイコン→疑似遅延→フレーズハイライト・文法解説トグル）に描画を委譲する。
- * 失敗時（ネットワークエラー・APIエラー）は自分（ユーザー）のバブルに「！」マークを表示し、
- * クリックでの再送信を可能にする。
  */
 async function attemptDelivery(bubbleEl, text) {
   try {
-    const response = await fetch('/api/chat/send', {
+    const response = await fetch('http://localhost:5000/api/chat/send', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -126,10 +129,9 @@ async function attemptDelivery(bubbleEl, text) {
     const data = await response.json();
 
     if (response.ok && data.status === 'success') {
-      // 受信バブルの描画・翻訳中アイコン・フレーズハイライト・文法解説トグルは
-      // translation.js の receivePeerMessage に一任する（直接addChatBubbleは呼ばない）。
-      // このアプリは英語学習が目的のため、ハイライト・文法解説の対象は英語（reply.en）とし、
-      // 日本語訳（reply.ja）は補足キャプションとして添える。
+      // 🔍 バックエンドから返ってきたデータをコンソールで確認する
+      console.log("【APIレスポンス確認】", data.reply);
+
       document.dispatchEvent(new CustomEvent('chat:apiReplyReceived', {
         detail: {
           translatedText: data.reply.en,
@@ -150,10 +152,10 @@ async function attemptDelivery(bubbleEl, text) {
 }
 
 /**
- * 送信処理を統括する。楽観的UI更新（即時バブル追加）→ 入力欄クリア →
- * 紙飛行機アニメーション → app.pyへの実送信が終わるまでボタングレーアウトを行う。
+ * 送信処理を統括する。
  */
 export async function sendMessage() {
+  if (!chatInput) return;
   if (AppState.getState().chat.isSending) return;
 
   const text = chatInput.value;
@@ -168,9 +170,11 @@ export async function sendMessage() {
   setSendButtonStatus('SENDING');
   updateSendButtonState();
 
-  playFlyAnimation(chatInput);
+  if (typeof playFlyAnimation === 'function') {
+    playFlyAnimation(chatInput);
+  }
 
-  // app.py への通信が終わるまで待つ
+  // Flaskサーバーへの通信
   await attemptDelivery(bubble, text.trim());
 
   AppState.setChatSending(false);
@@ -178,18 +182,24 @@ export async function sendMessage() {
   updateSendButtonState();
 }
 
-chatInput.addEventListener('input', updateSendButtonState);
+// イベントリスナーの登録
+if (chatInput) {
+  chatInput.addEventListener('input', updateSendButtonState);
 
-chatInput.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
-  e.preventDefault();
-  if (AppState.getState().ui.isTransitioning) return; // オーバーレイ迂回対策の二段ガード
-  sendMessage();
-});
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    if (AppState.getState().ui.isTransitioning) return;
+    sendMessage();
+  });
+}
 
-sendBtn.addEventListener('click', () => {
-  if (AppState.getState().ui.isTransitioning) return;
-  sendMessage();
-});
+if (sendBtn) {
+  sendBtn.addEventListener('click', () => {
+    if (AppState.getState().ui.isTransitioning) return;
+    sendMessage();
+  });
+}
 
+// 初期化時のボタン状態更新
 updateSendButtonState();

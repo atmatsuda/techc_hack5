@@ -1,42 +1,48 @@
 import os
 import sys
-from dotenv import load_dotenv
+import json
+import traceback
+from dotenv import load_dotenv; load_dotenv()
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-# .envの読み込み
-load_dotenv()
-
-# Pydanticモデルの定義
 class ChatResponse(BaseModel):
-    translation_en: str
-    translation_ja: str
-    grammar_note: str
-    nuance_note: str
+    translation_en: str = Field(description="英語表現")
+    translation_ja: str = Field(description="日本語表現")
+    grammar_note: str = Field(description="文法・単語の解説")
+    nuance_note: str = Field(description="ニュアンスや使い方の補足")
 
 def generate_chat_response(prompt: str) -> dict:
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    
+    # 🔍 ここで読み込んだAPIキーをターミナルに出力して確認します
+    print(f"DEBUG_API_KEY: [{api_key}]")
+
     if not api_key:
-        sys.stderr.write("[AI Service Error] GEMINI_API_KEY is not set.\n")
+        sys.stderr.write("[AI Service Error] GEMINI_API_KEY is not set in .env\n")
         return {
             "translation_en": prompt,
-            "translation_ja": "翻訳を取得できませんでした",
-            "grammar_note": "解説を取得できませんでした",
+            "translation_ja": "エラー: APIキーが設定されていません",
+            "grammar_note": ".env ファイルに GEMINI_API_KEY を設定してください。",
             "nuance_note": "",
         }
 
     try:
+        # クライアントの初期化
         client = genai.Client(api_key=api_key)
-        
+
         system_instruction = (
             "あなたは優秀な英語学習アシスタントです。"
-            "ユーザーから入力されたテキストに対して、英語翻訳、日本語翻訳、文法解説、ニュアンス解説を生成してください。"
+            "スラング、日常会話、単語、短文など、どんな入力に対しても必ず以下のJSON構造で返答を作成してください。\n"
+            "1. translation_en: 入力に対応する自然な英語\n"
+            "2. translation_ja: 入力に対応する自然な日本語訳\n"
+            "3. grammar_note: 文法構文、略語の元の形、語源などの解説\n"
+            "4. nuance_note: カジュアルさ、ニュアンス、使われる場面の解説"
         )
 
-        # モデル名を gemini-3.6-flash に変更
         response = client.models.generate_content(
-            model="gemini-3.6-flash",
+            model="gemini-3.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
@@ -47,26 +53,37 @@ def generate_chat_response(prompt: str) -> dict:
         )
 
         if response.parsed:
-            if hasattr(response.parsed, "model_dump"):
+            if isinstance(response.parsed, ChatResponse):
                 return response.parsed.model_dump()
-            return response.parsed.dict()
-        else:
-            sys.stderr.write("[AI Service Error] Response parsing failed.\n")
-            return {
-                "translation_en": prompt,
-                "translation_ja": "翻訳を取得できませんでした",
-                "grammar_note": "解説を取得できませんでした",
-                "nuance_note": "",
-            }
+            elif hasattr(response.parsed, "model_dump"):
+                return response.parsed.model_dump()
+            elif isinstance(response.parsed, dict):
+                return response.parsed
+
+        if response.text:
+            text = response.text.strip()
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+            return json.loads(text.strip())
 
     except Exception as e:
-        err_type = type(e).__name__
-        err_detail = repr(e)
-        sys.stderr.write(f"[AI Service Exception] {err_type}: {err_detail}\n")
-        
+        sys.stderr.write("="*50 + "\n")
+        sys.stderr.write(f"[AI Service Exception] API Call Failed: {repr(e)}\n")
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.write("="*50 + "\n")
+
         return {
             "translation_en": prompt,
-            "translation_ja": "翻訳を取得できませんでした",
-            "grammar_note": "解説を取得できませんでした",
-            "nuance_note": "",
+            "translation_ja": "エラーが発生しました",
+            "grammar_note": f"API呼び出しエラー: {type(e).__name__}",
+            "nuance_note": f"詳細: {str(e)}",
         }
+
+    return {
+        "translation_en": prompt,
+        "translation_ja": "レスポンス取得失敗",
+        "grammar_note": "AIからの応答構造化に失敗しました。",
+        "nuance_note": "",
+    }
