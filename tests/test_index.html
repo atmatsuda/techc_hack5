@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI文法解説チャット</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f8; color: #333; }
+    
+    .container { max-width: 700px; margin: 40px auto; padding: 20px; }
+    h1 { font-size: 1.5rem; margin-bottom: 20px; text-align: center; }
+
+    /* チャット履歴エリア */
+    #chat-history { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
+
+    /* ユーザーメッセージ */
+    .user-msg { align-self: flex-end; background: #007aff; color: #fff; padding: 12px 16px; border-radius: 18px 18px 2px 18px; max-width: 80%; word-break: break-word; }
+
+    /* AI解説カード */
+    .ai-card { align-self: flex-start; background: #fff; border: 1px solid #e1e4e8; border-radius: 12px; padding: 16px; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .card-section { margin-bottom: 12px; }
+    .card-section:last-child { margin-bottom: 0; }
+    .card-label { font-size: 0.75rem; font-weight: bold; color: #6e7781; text-transform: uppercase; margin-bottom: 4px; }
+    .card-content { font-size: 0.95rem; line-height: 1.5; white-space: pre-wrap; }
+    .translation-box { background: #f8f9fa; padding: 8px 12px; border-radius: 6px; border-left: 3px solid #007aff; }
+
+    /* ローディング表示 */
+    .loading-spinner { display: none; align-self: flex-start; background: #e9ecef; padding: 10px 16px; border-radius: 12px; font-size: 0.9rem; color: #666; margin-bottom: 16px; }
+
+    /* 入力フォーム */
+    .input-container { display: flex; gap: 10px; background: #fff; padding: 10px; border-radius: 24px; border: 1px solid #ccc; }
+    input[type="text"] { flex: 1; border: none; outline: none; padding: 8px 12px; font-size: 1rem; }
+    button { background: #007aff; color: white; border: none; padding: 8px 18px; border-radius: 18px; cursor: pointer; font-weight: bold; }
+    button:disabled { background: #b0c4de; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>AI文法解説チャット</h1>
+  
+  <div id="chat-history"></div>
+  
+  <div id="loading" class="loading-spinner">AIが回答を生成中...</div>
+
+  <form id="chat-form" class="input-container">
+    <input type="text" id="user-input" placeholder="文法や英文について質問を入力..." required />
+    <button type="submit" id="send-btn">送信</button>
+  </form>
+</div>
+
+<script>
+  const API_URL = 'http://localhost:5000/api/chat/send';
+  const chatHistory = document.getElementById('chat-history');
+  const chatForm = document.getElementById('chat-form');
+  const userInput = document.getElementById('user-input');
+  const sendBtn = document.getElementById('send-btn');
+  const loading = document.getElementById('loading');
+
+  chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const message = userInput.value.trim();
+    if (!message) return;
+
+    appendUserMessage(message);
+    userInput.value = '';
+    setLoading(true);
+
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+
+      if (!response.ok) throw new Error('APIリクエストに失敗しました');
+
+      const data = await response.json();
+
+      if (data.status === 'success' && data.reply) {
+        appendAICard(data.reply);
+      } else {
+        alert('エラーが発生しました。');
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert('通信エラーが発生しました。Flaskサーバーの稼働状態を確認してください。');
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  function appendUserMessage(text) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'user-msg';
+    msgDiv.textContent = text;
+    chatHistory.appendChild(msgDiv);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+  }
+
+  function appendAICard(reply) {
+    const card = document.createElement('div');
+    card.className = 'ai-card';
+
+    card.innerHTML = `
+      <div class="card-section translation-box">
+        <div class="card-label">翻訳</div>
+        <div class="card-content"><strong>EN:</strong> ${escapeHtml(reply.translation_en)}</div>
+        <div class="card-content"><strong>JA:</strong> ${escapeHtml(reply.translation_ja)}</div>
+      </div>
+      <div class="card-section">
+        <div class="card-label">📖 文法解説</div>
+        <div class="card-content">${escapeHtml(reply.grammar_note)}</div>
+      </div>
+      ${reply.nuance_note ? `
+      <div class="card-section">
+        <div class="card-label">💡 ニュアンス・補足</div>
+        <div class="card-content">${escapeHtml(reply.nuance_note)}</div>
+      </div>
+      ` : ''}
+    `;
+
+    chatHistory.appendChild(card);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+  }
+
+  function setLoading(isLoading) {
+    loading.style.display = isLoading ? 'block' : 'none';
+    sendBtn.disabled = isLoading;
+    if (isLoading) chatHistory.scrollTop = chatHistory.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    })[m]);
+  }
+</script>
+
+</body>
+</html>
