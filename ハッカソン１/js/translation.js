@@ -1,143 +1,92 @@
 // js/translation.js
-// 担当範囲：受信メッセージの地球儀アイコン制御・翻訳疑似処理（詳細設計書 3.3節 / 4章 参照）
-import { addChatBubble } from './chat.js';
 import { renderHighlightedText } from './phrase-visualizer.js';
 
-const timerRegistry = new WeakMap(); // bubbleElement -> timeoutId（弱参照でGC可能）
-const activeBubbles = new Set();     // 一括操作用の索引（アクティブなバブルのみ保持）
-
-function renderGlobeIcon(container) {
-  container.textContent = ''; // innerHTMLではなくtextContentでクリア
-
-  // perspectiveをかけた親でY軸回転させることで、平面回転ではなく自転しているような立体感を出す
-  const wrap = document.createElement('span');
-  wrap.className = 'translation-globe-wrap';
-
-  const icon = document.createElement('span');
-  icon.className = 'translation-globe';
-  icon.setAttribute('aria-label', '翻訳中');
-  icon.textContent = '🌐';
-
-  wrap.appendChild(icon);
-  container.appendChild(wrap);
-}
-
 /**
- * 文法解説（grammarNote）＋ ネイティブの使用ニュアンス解説（nuance）を
- * 同じ開閉パネル（.grammar-note）にまとめて表示する。
- * トグル自体は grammar.js の toggleGrammarNote が `.grammar-note` を対象に行うため、
- * パネルの外枠（class="grammar-note"）は変えず、中身を複数行に分けて追加している。
- * @param {HTMLElement} bubbleEl 対象のチャットバブル要素
- * @param {string} grammarNote 文法構造の解説文
- * @param {string} [nuance] ネイティブの使用ニュアンス解説文（無ければ省略）
+ * AIからの返信データを受け取り、チャットエリアに「受信メッセージ（相手のバブル）」として
+ * 翻訳・文法解説・ニュアンス付きで綺麗に描画する。
  */
-function attachGrammarNote(bubbleEl, grammarNote, nuance) {
-  if (bubbleEl.querySelector('.grammar-note')) return;
-  const contentCol = bubbleEl.querySelector('.bubble-text')?.parentElement;
-  if (!contentCol) return;
+export function renderPeerReply(payload) {
+  const translatedText = payload?.translatedText || payload?.en || '';
+  const translationJa = payload?.translationJa || payload?.ja || '';
+  const grammarNote = payload?.grammarNote || '';
+  const nuance = payload?.nuance || '';
 
-  // クリックの起点となるアイコン（開閉自体はgrammar.jsのtoggleGrammarNoteが担当）
-  const toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = 'grammar-toggle-btn text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer';
-  toggleBtn.title = '文法解説を表示';
-  toggleBtn.textContent = '📖 文法解説';
-  contentCol.insertBefore(toggleBtn, contentCol.lastElementChild);
+  const chatArea = document.getElementById('chat-area');
+  if (!chatArea) return null;
 
-  const note = document.createElement('div');
-  note.className = 'grammar-note hidden text-[11px] text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-2 space-y-1.5';
+  // 1. 相手（Peer / Alex）のバブル構造を構築
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chat-bubble flex items-end gap-3 max-w-[85%]';
 
-  const grammarLine = document.createElement('p');
-  grammarLine.textContent = grammarNote;
-  note.appendChild(grammarLine);
+  // アバターアイコン
+  const avatar = document.createElement('div');
+  avatar.className = 'w-8 h-8 bg-sky-950 text-sky-400 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border border-sky-800';
+  avatar.textContent = 'A';
+  wrapper.appendChild(avatar);
 
-  if (nuance) {
-    const nuanceLine = document.createElement('p');
-    nuanceLine.className = 'nuance-note text-slate-400/80 italic';
-    nuanceLine.textContent = `💬 ${nuance}`;
-    note.appendChild(nuanceLine);
+  const contentCol = document.createElement('div');
+  contentCol.className = 'space-y-1 min-w-0';
+
+  // 本文バブル（英語訳）
+  const bubbleText = document.createElement('div');
+  bubbleText.className = 'bubble-text bg-slate-800 border border-slate-700 text-slate-200 p-3.5 rounded-2xl rounded-bl-none text-sm shadow-md break-all whitespace-pre-wrap';
+  
+  // ハイライト適用して英語本文をセット
+  renderHighlightedText(bubbleText, translatedText);
+  contentCol.appendChild(bubbleText);
+
+  // 2. 日本語訳の追加
+  if (translationJa) {
+    const jaEl = document.createElement('p');
+    jaEl.className = 'text-xs text-sky-300/90 pt-1 font-sans';
+    jaEl.textContent = translationJa;
+    contentCol.appendChild(jaEl);
   }
 
-  contentCol.insertBefore(note, contentCol.lastElementChild);
-}
+  // 3. 文法解説がある場合はトグルボタンと解説カードを追加
+  if (grammarNote && grammarNote.trim() !== '') {
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'grammar-toggle-btn text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer pt-1 block';
+    toggleBtn.title = '文法解説を表示';
+    toggleBtn.textContent = '📖 文法解説';
 
-function completeTranslation(bubbleEl) {
-  const bubbleText = bubbleEl.querySelector('.bubble-text');
-  if (!bubbleText) return;
+    const note = document.createElement('div');
+    // 最初は隠しておく（grammar.js の委譲イベントで toggleBtn から .grammar-note の hidden が切り替わる）
+    note.className = 'grammar-note hidden text-[11px] text-slate-300 bg-slate-900/80 border border-slate-800 rounded-lg px-3 py-2 space-y-1 mt-1';
 
-  renderHighlightedText(bubbleText, bubbleEl.dataset.pendingTranslation ?? '');
+    const grammarLine = document.createElement('p');
+    grammarLine.textContent = grammarNote;
+    note.appendChild(grammarLine);
 
-  if (bubbleEl.dataset.pendingGrammarNote) {
-    attachGrammarNote(bubbleEl, bubbleEl.dataset.pendingGrammarNote, bubbleEl.dataset.pendingNuance);
+    if (nuance && nuance.trim() !== '') {
+      const nuanceLine = document.createElement('p');
+      nuanceLine.className = 'nuance-note text-slate-400 italic pt-0.5 border-t border-slate-800/60 mt-1';
+      nuanceLine.textContent = `💬 ${nuance}`;
+      note.appendChild(nuanceLine);
+    }
+
+    contentCol.appendChild(toggleBtn);
+    contentCol.appendChild(note);
   }
 
-  delete bubbleEl.dataset.pendingTranslation;
-  delete bubbleEl.dataset.pendingGrammarNote;
-  delete bubbleEl.dataset.pendingNuance;
+  // メタ情報（受信）
+  const meta = document.createElement('p');
+  meta.className = 'text-[10px] text-slate-500 font-mono';
+  meta.textContent = '受信';
+  contentCol.appendChild(meta);
+
+  wrapper.appendChild(contentCol);
+  chatArea.appendChild(wrapper);
+
+  // 最下部にスクロール
+  chatArea.scrollTop = chatArea.scrollHeight;
+
+  return wrapper;
 }
 
-function cleanupBubbleTimer(bubbleEl) {
-  timerRegistry.delete(bubbleEl);
-  activeBubbles.delete(bubbleEl);
-}
-
-/**
- * バブル単位の翻訳疑似タイマーを開始する（1.2〜2.0秒後に完了）。
- * AbortSignalはsetTimeoutにネイティブ対応しないため、abortイベントでclearTimeoutを橋渡しする。
- * 通話開始等で一括中断したい場合は、呼び出し側のAbortControllerのsignalを渡す。
- * @param {HTMLElement} bubbleEl 対象のチャットバブル要素（.chat-bubble、chat.jsのaddChatBubbleが返す要素）
- * @param {AbortSignal} signal 中断用シグナル
- */
-export function startTranslationTimer(bubbleEl, signal) {
-  const timeoutId = setTimeout(() => {
-    completeTranslation(bubbleEl);
-    cleanupBubbleTimer(bubbleEl);
-  }, 1200 + Math.random() * 800); // 疑似遅延
-
-  timerRegistry.set(bubbleEl, timeoutId);
-  activeBubbles.add(bubbleEl);
-
-  signal.addEventListener('abort', () => {
-    clearTimeout(timerRegistry.get(bubbleEl));
-    cleanupBubbleTimer(bubbleEl);
-  });
-}
-
-/**
- * 相手からのメッセージ受信を表現するエントリーポイント。
- * chat.js の addChatBubble でバブルを即座に描画し、地球儀アイコン表示 → startTranslationTimer
- * による疑似遅延を経て、翻訳済みテキスト（＋任意で文法解説）へ差し替える。
- * @param {{translatedText: string, grammarNote?: string, nuance?: string}} payload
- * @param {AbortSignal} [signal] 省略時はこの呼び出し単独のAbortControllerを生成する
- * @returns {HTMLElement|null} 生成したチャットバブル要素（.chat-bubble）
- */
-export function receivePeerMessage(payload, signal) {
-  const { translatedText, grammarNote, nuance } = payload;
-
-  // addChatBubbleはisValidMessageで空文字を弾くため、アイコン表示用のプレースホルダを渡す
-  const bubble = addChatBubble('🌐', 'peer');
-  if (!bubble) return null;
-
-  const bubbleText = bubble.querySelector('.bubble-text');
-  renderGlobeIcon(bubbleText);
-
-  bubble.dataset.pendingTranslation = translatedText;
-  if (grammarNote) {
-    bubble.dataset.pendingGrammarNote = grammarNote;
-  }
-  if (nuance) {
-    bubble.dataset.pendingNuance = nuance;
-  }
-
-  const effectiveSignal = signal ?? new AbortController().signal;
-  startTranslationTimer(bubble, effectiveSignal);
-
-  return bubble;
-}
-
-// chat.js の attemptDelivery() は、API応答受信後に描画処理をこのイベント経由で
-// translation.js に委譲する設計になっている（chat.js内コメント参照）。
-// このリスナーが無いと、サーバー応答は正常でも相手側バブルが一切描画されない。
+// chat.js から送出されるカスタムイベントをキャッチして描画を実行
 document.addEventListener('chat:apiReplyReceived', (e) => {
-  receivePeerMessage(e.detail);
+  console.log('[TranslationJS] API返信イベントを受信:', e.detail);
+  renderPeerReply(e.detail);
 });
