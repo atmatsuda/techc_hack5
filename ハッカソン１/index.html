@@ -38,7 +38,17 @@
           </div>
         </div>
 
+        <!-- ヘッダー右側：翻訳トグル ＋ 表現ボタン ＋ 通話ボタン -->
         <div class="flex items-center gap-2">
+          <!-- 翻訳ON/OFFトグル（スッキリしたサイズ感でヘッダーに格納） -->
+          <div class="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/60 px-2.5 py-1.5 rounded-xl border border-slate-700/60">
+            <span>翻訳:</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="translate-toggle" checked class="sr-only peer">
+              <div class="w-7 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-sky-600"></div>
+            </label>
+          </div>
+
           <button id="expression-toggle-btn" class="p-2.5 text-slate-400 hover:text-slate-200 rounded-xl bg-slate-800 border border-slate-700 cursor-pointer text-xs font-bold" title="表現の型一覧">📖 表現</button>
           <button id="call-btn" class="p-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl active:scale-95 transition-all cursor-pointer shadow-md text-xs font-bold flex items-center gap-1" title="通話を開始">📞 通話</button>
         </div>
@@ -67,18 +77,18 @@
         <!-- ここに .chat-bubble が動的に追加される（js/chat.js） -->
       </main>
 
-      <!-- アーカイブ画面（一覧） -->
+      <!-- アーカイブ画面（ルーム一覧） -->
       <main id="archive-area" class="flex-1 overflow-y-auto p-6 relative bg-slate-950 hidden">
         <div class="max-w-md mx-auto space-y-5 pb-20">
           <div class="flex justify-between items-center">
-            <h2 class="text-xl font-bold text-slate-100 tracking-wide">アーカイブされたトピック</h2>
-            <div class="flex items-center gap-2">
-              <button id="archive-save-btn" class="text-[11px] px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer" title="現在の会話履歴を保存">保存</button>
-              <button id="archive-load-btn" class="text-[11px] px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 cursor-pointer" title="保存済みの会話履歴を読込">読込</button>
-            </div>
+            <h2 class="text-xl font-bold text-slate-100 tracking-wide">チャットルーム一覧</h2>
+            <!-- 新規ルーム作成ボタン -->
+            <button id="create-room-btn" class="text-[11px] px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer transition-all">＋ 新規ルーム作成</button>
           </div>
           <p id="archive-message" class="text-xs text-slate-500 font-mono"></p>
-          <div id="archive-list" class="space-y-3"></div>
+          
+          <!-- ルームが動的に並ぶリストコンテナ -->
+          <div id="room-list-container" class="space-y-3"></div>
         </div>
       </main>
 
