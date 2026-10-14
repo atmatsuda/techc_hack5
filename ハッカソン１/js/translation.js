@@ -52,7 +52,6 @@ export function renderPeerReply(payload) {
     toggleBtn.textContent = '📖 文法解説';
 
     const note = document.createElement('div');
-    // 最初は隠しておく（grammar.js の委譲イベントで toggleBtn から .grammar-note の hidden が切り替わる）
     note.className = 'grammar-note hidden text-[11px] text-slate-300 bg-slate-900/80 border border-slate-800 rounded-lg px-3 py-2 space-y-1 mt-1';
 
     const grammarLine = document.createElement('p');
@@ -87,5 +86,5 @@ export function renderPeerReply(payload) {
 
 // chat.js から送出されるカスタムイベントをキャッチして描画を実行
 document.addEventListener('chat:apiReplyReceived', (e) => {
- receivePeerMessage(e.detail);
+  renderPeerReply(e.detail);
 });

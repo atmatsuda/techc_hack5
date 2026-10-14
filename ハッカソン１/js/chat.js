@@ -16,6 +16,82 @@ const initialRoomsData = {
   }
 };
 
+// DOM要素の取得
+const chatInput = document.getElementById('chat-input');
+const sendBtn = document.getElementById('send-btn');
+const sendBtnStatus = document.getElementById('send-btn-status');
+const chatArea = document.getElementById('chat-area');
+const translateToggle = document.getElementById('translate-toggle'); // ★ 翻訳トグル
+const scrollDownBtn = document.getElementById('scroll-down-btn'); // ★ 新着メッセージ通知ボタン
+
+if (!chatInput || !sendBtn || !chatArea) {
+  console.error('[ChatJS] 必要なDOM要素が見つかりません。HTMLのIDを確認してください。');
+}
+
+// --- スマートスクロール制御 ---
+function isUserAtBottom() {
+  if (!chatArea) return true;
+  const threshold = 100; // 許容するピクセル数
+  return chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight <= threshold;
+}
+
+function smartScrollToLatest() {
+  if (!chatArea) return;
+
+  if (isUserAtBottom()) {
+    chatArea.scrollTop = chatArea.scrollHeight;
+    if (scrollDownBtn) scrollDownBtn.classList.add('hidden');
+  } else {
+    if (scrollDownBtn) scrollDownBtn.classList.remove('hidden');
+  }
+}
+
+if (chatArea && scrollDownBtn) {
+  chatArea.addEventListener('scroll', () => {
+    if (isUserAtBottom()) {
+      scrollDownBtn.classList.add('hidden');
+    }
+  });
+
+  scrollDownBtn.addEventListener('click', () => {
+    chatArea.scrollTop = chatArea.scrollHeight;
+    scrollDownBtn.classList.add('hidden');
+  });
+}
+// -----------------------------
+
+// --- 相手の入力中（Typing...）アニメーション制御 ---
+export function showTypingIndicator() {
+  const indicator = document.getElementById('typing-indicator');
+  if (!indicator) return;
+
+  // 現在のルームのパートナー名を動的に反映
+  const storedData = localStorage.getItem('chatRooms');
+  if (storedData) {
+    const roomsData = JSON.parse(storedData);
+    const currentRoom = roomsData[currentRoomId];
+    if (currentRoom && currentRoom.partnerName) {
+      const nameSpan = indicator.querySelector('span:last-child');
+      if (nameSpan) {
+        nameSpan.textContent = `${currentRoom.partnerName} が入力中...`;
+      }
+    }
+  }
+
+  indicator.classList.remove('hidden');
+  indicator.classList.add('flex');
+  smartScrollToLatest();
+}
+
+export function hideTypingIndicator() {
+  const indicator = document.getElementById('typing-indicator');
+  if (!indicator) return;
+
+  indicator.classList.remove('flex');
+  indicator.classList.add('hidden');
+}
+// --------------------------------------------------
+
 /**
  * 現在のルームのメッセージを localStorage に安全に保存する
  */
@@ -76,6 +152,9 @@ export function initChatStorageAndLoad() {
  */
 export function switchRoom(roomId) {
   try {
+    hideTypingIndicator(); // ルーム切り替え時はタイピング表示をクリア
+    if (scrollDownBtn) scrollDownBtn.classList.add('hidden');
+
     const storedData = localStorage.getItem('chatRooms');
     const roomsData = storedData ? JSON.parse(storedData) : initialRoomsData;
 
@@ -120,15 +199,16 @@ export function createNewRoom(partnerName = 'New Partner 🌍') {
   }
 }
 
-// DOM要素の取得
-const chatInput = document.getElementById('chat-input');
-const sendBtn = document.getElementById('send-btn');
-const sendBtnStatus = document.getElementById('send-btn-status');
-const chatArea = document.getElementById('chat-area');
-const translateToggle = document.getElementById('translate-toggle'); // ★ 翻訳トグル
-
-if (!chatInput || !sendBtn || !chatArea) {
-  console.error('[ChatJS] 必要なDOM要素が見つかりません。HTMLのIDを確認してください。');
+/**
+ * AI（相手）からのメッセージを受け取って画面に吹き出しを追加する
+ */
+export function receivePeerMessage(text, options = {}) {
+  // 相手（peer）のチャットバブルを画面に追加する
+  return addChatBubble(text, 'peer', {
+    grammarNote: options.grammarNote || null,
+    nuance: options.nuance || null,
+    time: options.time || ''
+  });
 }
 
 /**
@@ -147,12 +227,6 @@ function updateSendButtonState() {
 function setSendButtonStatus(text) {
   if (sendBtnStatus) {
     sendBtnStatus.textContent = text;
-  }
-}
-
-function scrollToLatest() {
-  if (chatArea) {
-    chatArea.scrollTop = chatArea.scrollHeight;
   }
 }
 
@@ -206,7 +280,9 @@ export function addChatBubble(text, sender = 'me', options = {}) {
 
   wrapper.appendChild(contentCol);
   chatArea.appendChild(wrapper);
-  scrollToLatest();
+  
+  // ★ スマートスクロールを適用
+  smartScrollToLatest();
 
   return wrapper;
 }
@@ -231,8 +307,10 @@ async function attemptDelivery(bubbleEl, text) {
   try {
     const currentAutoTranslate = AppState.getState().chat.autoTranslate;
 
-   
-    const response = await fetch('/api/chat/send', {
+    // ★ AIからの返信待ちの間に入力中アニメーションを表示
+    showTypingIndicator();
+
+    const response = await fetch('http://127.0.0.1:5000/api/chat/send', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -264,6 +342,9 @@ async function attemptDelivery(bubbleEl, text) {
     }
   } catch (error) {
     showSendError(bubbleEl, text);
+  } finally {
+    // ★ 成功・失敗にかかわらずタイピング表示を確実に消去
+    hideTypingIndicator();
   }
 }
 
@@ -330,9 +411,12 @@ if (translateToggle) {
   });
 }
 
-// --- AI（相手）からの返信を受け取ったときに、localStorageへ自動保存する（※画面描画は translation.js に一任） ---
+// --- AI（相手）からの返信を受け取ったときに、localStorageへ自動保存する ---
 document.addEventListener('chat:apiReplyReceived', (e) => {
   try {
+    // 安全のため、受信時にもタイピングインジケーターを確実に消去
+    hideTypingIndicator();
+
     const detail = e.detail;
     
     const now = new Date();
@@ -349,7 +433,6 @@ document.addEventListener('chat:apiReplyReceived', (e) => {
       reactions: []
     };
 
-    // 履歴の保存だけを行い、画面へのバブル追加は translation.js に任せる
     saveMessageToLocalStorage(peerMessage);
     
   } catch (err) {
